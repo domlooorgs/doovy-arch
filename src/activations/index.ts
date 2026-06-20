@@ -8,6 +8,6 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-export { NeuralNetwork } from './NeuralNetwork.js';
-export { CommitClassifier } from './CommitClassifier.js';
-export { Generative } from './Generative.js';
+export { relu, reluDerivative, sigmoid } from './relu.js';
+export { swish, swishDerivative } from './swish.js';
+export { softmax } from './softmax.js';

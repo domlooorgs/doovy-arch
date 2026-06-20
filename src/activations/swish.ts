@@ -8,6 +8,8 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-export { NeuralNetwork } from './NeuralNetwork.js';
-export { CommitClassifier } from './CommitClassifier.js';
-export { Generative } from './Generative.js';
+export const swish = (x: number) => x / (1 + Math.exp(-x));
+export const swishDerivative = (x: number) => {
+  const s = 1 / (1 + Math.exp(-x));
+  return s + x * s * (1 - s);
+};

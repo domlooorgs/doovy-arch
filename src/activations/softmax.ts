@@ -8,6 +8,9 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-export { NeuralNetwork } from './NeuralNetwork.js';
-export { CommitClassifier } from './CommitClassifier.js';
-export { Generative } from './Generative.js';
+export const softmax = (logits: number[]): number[] => {
+  const maxLogit = Math.max(...logits);
+  const exps = logits.map((val) => Math.exp(val - maxLogit));
+  const sumExps = exps.reduce((a, b) => a + b, 0);
+  return exps.map((val) => val / (sumExps || 1));
+};

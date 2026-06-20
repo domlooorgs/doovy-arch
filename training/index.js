@@ -1,4 +1,4 @@
-import { Generative } from './dist/index.min.mjs';
+import { Generative } from '../dist/index.min.mjs';
 
 // 1. Kamus data yang konsisten
 const vocabulary = ["fix", "add", "bug", "style", "refactor", "docs", "feature", "test", "chore", "perf", "code"];

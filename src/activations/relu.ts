@@ -8,6 +8,6 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-export { NeuralNetwork } from './NeuralNetwork.js';
-export { CommitClassifier } from './CommitClassifier.js';
-export { Generative } from './Generative.js';
+export const relu = (x: number) => Math.max(0, x);
+export const reluDerivative = (x: number) => (x > 0 ? 1 : 0);
+export const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
