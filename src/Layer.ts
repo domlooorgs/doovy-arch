@@ -18,10 +18,7 @@ export class Layer {
   ) {
     const std = Math.sqrt(2 / inSize);
     this.weights = Array.from({ length: inSize }, () =>
-      Array.from(
-        { length: outSize },
-        () => (Math.random() * 2 - 1) * std
-      ),
+      Array.from({ length: outSize }, () => (Math.random() * 2 - 1) * std),
     );
     this.bias = new Array(outSize).fill(0.01);
   }

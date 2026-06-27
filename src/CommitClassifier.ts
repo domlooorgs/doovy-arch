@@ -19,6 +19,25 @@ export const CATEGORIES = [
 ] as const;
 type Category = (typeof CATEGORIES)[number];
 
+export interface CommitClassifierOptions {
+  hiddenSize: number;
+  learningRate: number;
+  momentum: number;
+  maxGrad: number;
+  confidenceThreshold: number;
+  activation: 'relu' | 'swish';
+}
+
+export interface CommitClassifierTrainOptions {
+  data: { text: string; category: Category }[];
+  epochs?: number;
+}
+
+export interface CommitClassifierContinueTrainingOptions extends CommitClassifierTrainOptions {
+  filePath: string;
+  decayFactor: number;
+}
+
 export class CommitClassifier {
   private brain: NeuralNetwork | null = null;
   private vocabulary: string[] = [];
@@ -30,15 +49,19 @@ export class CommitClassifier {
   private datasetSize: number = 0;
 
   constructor(
-    hiddenSize: number = 8,
-    learningRate: number = 0.05,
-    confidenceThreshold: number = 0.55,
-    activation: 'relu' | 'swish' = 'relu',
+    options: CommitClassifierOptions = {
+      hiddenSize: 8,
+      learningRate: 0.05,
+      momentum: 0.9,
+      maxGrad: 1.0,
+      confidenceThreshold: 0.55,
+      activation: 'relu',
+    },
   ) {
-    this.hiddenSize = hiddenSize;
-    this.learningRate = learningRate;
-    this.confidenceThreshold = confidenceThreshold;
-    this.activation = activation;
+    this.hiddenSize = options.hiddenSize;
+    this.learningRate = options.learningRate;
+    this.confidenceThreshold = options.confidenceThreshold;
+    this.activation = options.activation;
   }
 
   private tokenize(text: string): string[] {
@@ -59,10 +82,10 @@ export class CommitClassifier {
     return ngrams;
   }
 
-  public train(
-    data: { text: string; category: Category }[],
+  public async train({
+    data,
     epochs = 200,
-  ): void {
+  }: CommitClassifierTrainOptions): Promise<void> {
     this.buildVocabulary(data.map((d) => d.text));
 
     this.brain = new NeuralNetwork(
@@ -70,6 +93,9 @@ export class CommitClassifier {
       this.hiddenSize,
       CATEGORIES.length,
       this.learningRate,
+      this.momentum,
+      this.maxGrad,
+      this.activation,
     );
 
     for (let epoch = 0; epoch < epochs; epoch++) {
@@ -81,9 +107,48 @@ export class CommitClassifier {
 
         epochError += this.brain.trainStep(inputVector, target);
       }
+
+      await new Promise((resolve) => setImmediate(resolve));
+
       this.drawNeuralDashboard(epoch, epochs, epochError / data.length);
     }
     console.log('\n✅ Training selesai!');
+  }
+
+  public async continueTraining({
+    data,
+    filePath,
+    epochs = 100,
+    decayFactor = 0.5,
+  }: CommitClassifierContinueTrainingOptions): Promise<void> {
+    const loaded = this.loadModel(filePath);
+
+    if (loaded) {
+      this.brain!.applyLRDecay(decayFactor);
+      this.learningRate = this.brain!.learningRate;
+      console.log(`✅ Model dimuat! LR sekarang: ${this.learningRate}`);
+    } else {
+      console.log('⚠️ Gagal load model, memulai dari awal...');
+      return this.train({ data, epochs });
+    }
+
+    for (let epoch = 0; epoch < epochs; epoch++) {
+      let epochError = 0;
+      for (const item of data) {
+        const inputVector = this.textToVector(item.text);
+        const target = new Array(CATEGORIES.length).fill(0);
+        target[CATEGORIES.indexOf(item.category)] = 1;
+        epochError += this.brain!.trainStep(inputVector, target);
+      }
+
+      await new Promise((resolve) => setImmediate(resolve));
+      this.drawNeuralDashboard(epoch, epochs, epochError / data.length);
+
+      if (epoch % 10 === 0) this.saveModel(filePath);
+    }
+
+    this.saveModel(filePath);
+    console.log('\n✅ Continuous training selesai!');
   }
 
   public getCommitQualityScore(text: string): number {
@@ -139,7 +204,7 @@ export class CommitClassifier {
     const docCount: Record<string, number> = {};
 
     dataset.forEach((text) => {
-      const tokens = new Set(this.tokenizeToNgrams(text)); // Pake Set biar 1 per doc
+      const tokens = new Set(this.tokenizeToNgrams(text));
       tokens.forEach((token) => {
         vocabSet.add(token);
         docCount[token] = (docCount[token] || 0) + 1;
@@ -147,30 +212,26 @@ export class CommitClassifier {
     });
 
     this.vocabulary = Array.from(vocabSet);
-    
-    // Hitung IDF untuk setiap kata di vocab
+
     this.idfWeights = this.vocabulary.map((token) => {
       return Math.log(this.datasetSize / (docCount[token] || 1)) + 1;
     });
   }
 
-  // 3. Update textToVector jadi TF-IDF
   private textToVector(text: string): number[] {
     const vector = new Array(this.vocabulary.length).fill(0);
     const tokens = this.tokenizeToNgrams(text);
-    
-    // Hitung TF (Term Frequency)
+
     const tfMap: Record<string, number> = {};
     tokens.forEach((t) => (tfMap[t] = (tfMap[t] || 0) + 1));
 
-    // TF * IDF
     this.vocabulary.forEach((token, idx) => {
       if (tfMap[token]) {
         const tf = tfMap[token] / tokens.length;
         vector[idx] = tf * this.idfWeights[idx];
       }
     });
-    
+
     return vector;
   }
 
@@ -286,7 +347,6 @@ export class CommitClassifier {
       `[${bar}] ${percent}% | Eror: ${error.toFixed(6)}\n\n`,
     );
 
-    // GANTI DI SINI: Akses ke l1.weights yang ada di dalam brain
     const weights = this.brain ? this.brain['l1'].weights : [];
     const rows = Math.min(weights.length, 6);
 
@@ -297,7 +357,6 @@ export class CommitClassifier {
     for (let i = 0; i < rows; i++) {
       let rowStr = `Node ${i} `;
 
-      // Pastikan weights[i] ada isinya
       if (weights[i]) {
         for (let j = 0; j < Math.min(weights[i].length, 3); j++) {
           const weight = weights[i][j] || 0;
@@ -312,31 +371,33 @@ export class CommitClassifier {
     }
   }
 
-public saveModel(filePath: string): void {
-  if (!this.brain) return;
-  const modelState = {
-    vocabulary: this.vocabulary,
-    idfWeights: this.idfWeights, // <--- TAMBAH INI
-    brain: this.brain.getModel(),
-  };
-  fs.writeFileSync(filePath, JSON.stringify(modelState), 'utf8'); // Hapus null, 2 biar file lebih ringan
-}
+  public saveModel(filePath: string): void {
+    if (!this.brain) return;
+    const modelState = {
+      vocabulary: this.vocabulary,
+      idfWeights: this.idfWeights,
+      brain: this.brain.getModel(),
+    };
+    fs.writeFileSync(filePath, JSON.stringify(modelState), 'utf8');
+  }
 
-public loadModel(filePath: string): boolean {
-  if (!fs.existsSync(filePath)) return false;
-  const modelState = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  
-  this.vocabulary = modelState.vocabulary;
-  this.idfWeights = modelState.idfWeights; // <--- TAMBAH INI
-  
-  this.brain = new NeuralNetwork(
-    this.vocabulary.length,
-    this.hiddenSize,
-    CATEGORIES.length,
-    this.learningRate, // Pastikan learningRate ada kalau dibutuhkan di NeuralNetwork
-  );
-  this.brain.loadModel(modelState.brain);
-  return true;
-}
+  public loadModel(filePath: string): boolean {
+    if (!fs.existsSync(filePath)) return false;
+    const modelState = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
+    this.vocabulary = modelState.vocabulary;
+    this.idfWeights = modelState.idfWeights;
+
+    this.brain = new NeuralNetwork(
+      this.vocabulary.length,
+      this.hiddenSize,
+      CATEGORIES.length,
+      this.learningRate,
+      this.momentum,
+      this.maxGrad,
+      this.activation,
+    );
+    this.brain.loadModel(modelState.brain);
+    return true;
+  }
 }
